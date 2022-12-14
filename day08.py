@@ -1,7 +1,8 @@
 from __future__ import annotations
 import sys
 from enum import Enum
-from copy import deepcopy
+from collections import defaultdict
+from functools import reduce
 import unittest
 
 
@@ -12,167 +13,60 @@ class Direction(Enum):
     WEST = 3
 
 
-def compute_tallest_seen_from_direction_matrix(
-    matrix: list[list[int]], from_dir: Direction
-) -> list[list[int]]:
-    _matrix = deepcopy(matrix)
-    length = len(_matrix[0])
-    reversed_rows = False
-    transposed = False
+class TreeMatrix:
+    def __init__(self, matrix: list[list[int]]):
+        self._matrix = matrix
+        self.dimensions = len(matrix[0])
 
-    if from_dir in [Direction.NORTH, Direction.SOUTH]:
-        _matrix = list(list(l) for l in zip(*_matrix))
-        transposed = True
-    if from_dir in [Direction.EAST, Direction.SOUTH]:
-        _matrix = [l[::-1] for l in _matrix]
-        reversed_rows = True
+    def get_trees_in_direction_of(self, dir: Direction, x: int, y: int) -> list[int]:
+        if dir == Direction.EAST:
+            return self._matrix[y][x + 1 :]
+        if dir == Direction.WEST:
+            return self._matrix[y][::-1][self.dimensions - x :]
 
-    tallest_seen_matrix = [[-1] * length for _ in range(length)]
-    if from_dir:
-        for row in range(length):
-            tallest_seen = -1
-            for col in range(length):
-                tallest_seen_matrix[row][col] = tallest_seen
-                cur_tree_height = _matrix[row][col]
-                tallest_seen = (
-                    cur_tree_height if cur_tree_height > tallest_seen else tallest_seen
-                )
+        transposed = [[row for row in col] for col in zip(*self._matrix)]
+        if dir == Direction.SOUTH:
+            return transposed[x][y + 1 :]
+        return transposed[x][::-1][self.dimensions - y :]
 
-    if reversed_rows:
-        tallest_seen_matrix = [row[::-1] for row in tallest_seen_matrix]
-    if transposed:
-        tallest_seen_matrix = list(list(l) for l in zip(*tallest_seen_matrix))
+    def get_trees_in_all_directions_of(
+        self, x: int, y: int
+    ) -> dict[Direction, list[int]]:
+        return {
+            Direction.NORTH: self.get_trees_in_direction_of(Direction.NORTH, x, y),
+            Direction.EAST: self.get_trees_in_direction_of(Direction.EAST, x, y),
+            Direction.SOUTH: self.get_trees_in_direction_of(Direction.SOUTH, x, y),
+            Direction.WEST: self.get_trees_in_direction_of(Direction.WEST, x, y),
+        }
 
-    return tallest_seen_matrix
-
-
-def min_of_matrices(matrices: list[list[list[int]]]) -> list[list[int]]:
-    length = len(matrices[0][0])
-    summary_matrix = [[99] * length for _ in range(length)]
-    for matrix in matrices:
-        for row in range(length):
-            for col in range(length):
-                cur_summary_height = summary_matrix[row][col]
-                cur_matrix_height = matrix[row][col]
-                summary_matrix[row][col] = (
-                    cur_matrix_height
-                    if cur_matrix_height < cur_summary_height
-                    else cur_summary_height
-                )
-
-    return summary_matrix
-
-
-def count_matrix_filtered_by_min_matrix(
-    matrix: list[list[int]], min_matrix: list[list[int]]
-) -> int:
-    length = len(matrix[0])
-    return sum(
-        1
-        for _ in filter(
-            lambda t: t[0] > t[1],
-            (
-                (pm[i], mm[i])
-                for i in range(length)
-                for (pm, mm) in zip(matrix, min_matrix)
-            ),
-        )
-    )
+    def get_tree(self, x: int, y: int) -> int:
+        return self._matrix[y][x]
 
 
 class TestDay08(unittest.TestCase):
-    sample_matrix = [
-        [3, 0, 3, 7, 3],
-        [2, 5, 5, 1, 2],
-        [6, 5, 3, 3, 2],
-        [3, 3, 5, 4, 9],
-        [3, 5, 3, 9, 0],
-    ]
-
-    def test_compute_tallest_seen_from_direction_matrix(self) -> None:
-        z = -1
-
-        from_west = compute_tallest_seen_from_direction_matrix(
-            self.sample_matrix, Direction.WEST
-        )
-        assert from_west == [
-            [z, 3, 3, 3, 7],
-            [z, 2, 5, 5, 5],
-            [z, 6, 6, 6, 6],
-            [z, 3, 3, 5, 5],
-            [z, 3, 5, 5, 9],
-        ]
-
-        from_east = compute_tallest_seen_from_direction_matrix(
-            self.sample_matrix, Direction.EAST
-        )
-        assert from_east == [
-            [7, 7, 7, 3, z],
-            [5, 5, 2, 2, z],
-            [5, 3, 3, 2, z],
-            [9, 9, 9, 9, z],
-            [9, 9, 9, 0, z],
-        ]
-
-        from_north = compute_tallest_seen_from_direction_matrix(
-            self.sample_matrix, Direction.NORTH
-        )
-        assert from_north == [
-            [z, z, z, z, z],
-            [3, 0, 3, 7, 3],
-            [3, 5, 5, 7, 3],
-            [6, 5, 5, 7, 3],
-            [6, 5, 5, 7, 9],
-        ]
-
-        from_south = compute_tallest_seen_from_direction_matrix(
-            self.sample_matrix, Direction.SOUTH
-        )
-        assert from_south == [
-            [6, 5, 5, 9, 9],
-            [6, 5, 5, 9, 9],
-            [3, 5, 5, 9, 9],
-            [3, 5, 3, 9, 0],
-            [z, z, z, z, z],
-        ]
-
-    def test_min_of_matrices(self) -> None:
-        min_matrix = min_of_matrices(
+    def test_get_trees_in_direction_of__east(self) -> None:
+        m = TreeMatrix(
             [
-                [
-                    [1, 2, 3],
-                    [3, 2, 1],
-                    [5, 4, 3],
-                ],
-                [
-                    [3, 2, 1],
-                    [1, 2, 3],
-                    [2, 3, 4],
-                ],
+                [2, 7, 6],
+                [9, 5, 1],
+                [4, 3, 8],
             ]
         )
+        assert m.get_trees_in_direction_of(Direction.EAST, 0, 0) == [7, 6]
+        assert m.get_trees_in_direction_of(Direction.EAST, 1, 0) == [6]
+        assert m.get_trees_in_direction_of(Direction.EAST, 2, 0) == []
 
-        assert min_matrix == [
-            [1, 2, 1],
-            [1, 2, 1],
-            [2, 3, 3],
-        ]
+        assert m.get_trees_in_direction_of(Direction.WEST, 0, 0) == []
+        assert m.get_trees_in_direction_of(Direction.WEST, 1, 0) == [2]
+        assert m.get_trees_in_direction_of(Direction.WEST, 2, 0) == [7, 2]
 
-    def test_count_matrix_filtered_by_min_matrix(self) -> None:
-        count = count_matrix_filtered_by_min_matrix(
-            [
-                [1, 2, 3],
-                [2, 3, 4],
-                [3, 4, 5],
-            ],
-            [
-                [3, 3, 3],
-                [3, 3, 3],
-                [3, 3, 3],
-            ],
-        )
+        assert m.get_trees_in_direction_of(Direction.SOUTH, 0, 0) == [9, 4]
+        assert m.get_trees_in_direction_of(Direction.SOUTH, 0, 1) == [4]
+        assert m.get_trees_in_direction_of(Direction.SOUTH, 0, 2) == []
 
-        assert count == 3
+        assert m.get_trees_in_direction_of(Direction.NORTH, 0, 0) == []
+        assert m.get_trees_in_direction_of(Direction.NORTH, 0, 1) == [2]
+        assert m.get_trees_in_direction_of(Direction.NORTH, 0, 2) == [9, 2]
 
 
 if __name__ == "__main__":
@@ -180,10 +74,30 @@ if __name__ == "__main__":
         [int(c) for c in row] for row in sys.stdin.read().strip().split("\n")
     ]
 
-    matrices: list[list[list[int]]] = []
-    for d in [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]:
-        matrices.append(compute_tallest_seen_from_direction_matrix(input_matrix, d))
-    min_matrix = min_of_matrices(matrices)
-    count = count_matrix_filtered_by_min_matrix(input_matrix, min_matrix)
+    tree_matrix = TreeMatrix(input_matrix)
 
-    print(f"Part 1: {count}")
+    visible_trees = 0
+    highest_scenic_score = 0
+    for y in range(tree_matrix.dimensions):
+        for x in range(tree_matrix.dimensions):
+            cur_tree = tree_matrix.get_tree(x, y)
+            line_of_sight_trees = tree_matrix.get_trees_in_all_directions_of(x, y)
+            blocked_direction_count = 0
+            scenic_scores: dict[Direction, int] = defaultdict(int)
+            for (d, trees) in line_of_sight_trees.items():
+                for tree in trees:
+                    scenic_scores[d] += 1
+                    if cur_tree <= tree:
+                        blocked_direction_count += 1
+                        break
+            if blocked_direction_count < 4:
+                visible_trees += 1
+            # edges would be multiplied by zero, so skip
+            if len(scenic_scores) < 4:
+                continue
+            scenic_score = reduce(lambda t, s: t * s, scenic_scores.values(), 1)
+            if scenic_score > highest_scenic_score:
+                highest_scenic_score = scenic_score
+
+    print(f"Part 1: {visible_trees}")
+    print(f"Part 2: {highest_scenic_score}")
